@@ -226,7 +226,7 @@ int main(int argc, char *argv[]) {
 		{"in",      required_argument, 0, 'i'},
 		{"out",     required_argument, 0, 'o'},
 		{"key",     required_argument, 0, 'k'},
-		{"rand",    required_argumesnt, 0, 'r'},
+		{"rand",    required_argument, 0, 'r'},
 		{"gen",     required_argument, 0, 'g'},
 		{"bits",    required_argument, 0, 'b'},
 		{"enc",     no_argument,       0, 'e'},
@@ -289,13 +289,14 @@ int main(int argc, char *argv[]) {
 	 * rsa_shredKey function). */
 	switch (mode) {
 		case ENC:
-		encrypt(fnOut, fnIn, fnKey);
-		break;
+				encrypt(fnOut, fnIn, fnKey);
+				break;
 		case DEC:
-		decrypt(fnOut, fnIn, fnKey);
-		break;
+				decrypt(fnOut, fnIn, fnKey);
+				break;
 		case GEN:
-		generate(fnOut, nBits);
+				generate(fnOut, nBits);
+				break;
 		default:
 			return 1;
 	}
