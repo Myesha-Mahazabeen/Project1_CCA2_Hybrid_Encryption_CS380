@@ -7,7 +7,10 @@
 #include <getopt.h>
 #include <string.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
 #include <openssl/sha.h>
+
 
 #include "ske.h"
 #include "rsa.h"
