@@ -50,29 +50,127 @@ int zFromFile(FILE* f, mpz_t x)
 	return 0;
 }
 
+void setPrime(mpz_t prime, size_t bytes){
+    unsigned char* buf = malloc(bytes);
+    do{
+        randBytes(buf, bytes);
+        BYTES2Z(prime, buf, bytes);
+    }while (!ISPRIME(prime));
+    free(buf);
+}
+
 int rsa_keyGen(size_t keyBits, RSA_KEY* K)
 {
 	rsa_initKey(K);
+
 	/* TODO: write this.  Use the prf to get random byte strings of
 	 * the right length, and then test for primality (see the ISPRIME
 	 * macro above).  Once you've found the primes, set up the other
 	 * pieces of the key ({en,de}crypting exponents, and n=pq). */
+
+	// the number of bytes required for the key
+    size_t keyBytes = keyBits / CHAR_BIT;
+
+	// generate two probable prime numbers, p and q
+    setPrime(K->p, keyBytes);
+    setPrime(K->q, keyBytes);
+
+	// calculate n=p*q
+    mpz_mul(K->n, K->p, K->q);
+
+	// calculate Euler's totient function φ(n)
+    mpz_t phi;
+    mpz_t qSubOne;
+    mpz_t pSubOne;
+
+    mpz_init(phi);
+    mpz_init(qSubOne);
+    mpz_init(pSubOne);
+
+    mpz_sub_ui(pSubOne, K->p, 1);
+    mpz_sub_ui(qSubOne, K->q, 1);
+    mpz_mul(phi, pSubOne, qSubOne);
+
+	// Generate a random integer prime to φ(n)
+    mpz_t temp;
+    mpz_init(temp);
+    unsigned char* tempBuf = malloc(keyBytes);
+
+    mpz_t one;
+    
+	mpz_init(one); mpz_set_ui(one, 1);
+
+do {
+    do {
+        randBytes(tempBuf, keyBytes);
+        BYTES2Z(K->e, tempBuf, keyBytes);
+    } while (mpz_cmp_ui(K->e, 1) <= 0 || mpz_cmp(K->e, phi) >= 0); // ensure 1 < e < phi
+
+    mpz_gcd(temp, K->e, phi);
+} while (mpz_cmp_ui(temp, 1) != 0); // ensure gcd(e, phi) = 1
+
+
+    mpz_invert(K->d, K->e , phi);
+
+    free(tempBuf);
 	return 0;
 }
 
 size_t rsa_encrypt(unsigned char* outBuf, unsigned char* inBuf, size_t len,
-		RSA_KEY* K)
-{
-	/* TODO: write this.  Use BYTES2Z to get integers, and then
-	 * Z2BYTES to write the output buffer. */
-	return 0; /* TODO: return should be # bytes written */
+                   RSA_KEY* K) {
+    // initialize to hold the input data
+    mpz_t inInt;
+    mpz_init(inInt);
+
+    // convert the input byte buffer to a multi-precision integer
+    BYTES2Z(inInt, inBuf, len);
+
+    // to hold the encrypted result
+    mpz_t outInt;
+    mpz_init(outInt);
+
+    // modular exponentiation to encrypt the input integer
+    mpz_powm(outInt, inInt, K->e, K->n);
+
+    // convert the encrypted multi-precision integer back to a byte buffer
+    Z2BYTES(outBuf, len, outInt);
+
+    // clean up memory
+    mpz_clear(inInt);
+    mpz_clear(outInt);
+
+    // the length of the output buffer
+    return len;
 }
+
+
 size_t rsa_decrypt(unsigned char* outBuf, unsigned char* inBuf, size_t len,
-		RSA_KEY* K)
-{
-	/* TODO: write this.  See remarks above. */
-	return 0;
+                   RSA_KEY* K) {
+    // initialize a multi-precision integer to hold the encrypted data
+    mpz_t inInt;
+    mpz_init(inInt);
+
+    // convert the input byte buffer to a multi-precision integer
+    BYTES2Z(inInt, inBuf, len);
+
+    // initialize a multi-precision integer to hold the decrypted result
+    mpz_t outInt;
+    mpz_init(outInt);
+
+    // modular exponentiation to decrypt the input integer
+    mpz_powm(outInt, inInt, K->d, K->n);
+
+    // convert the decrypted multi-precision integer back to a byte buffer
+    Z2BYTES(outBuf, len, outInt);
+
+    // clean up memory 
+    mpz_clear(inInt);
+    mpz_clear(outInt);
+
+    // return the length of the output buffer
+    return len;
 }
+
 
 size_t rsa_numBytesN(RSA_KEY* K)
 {
