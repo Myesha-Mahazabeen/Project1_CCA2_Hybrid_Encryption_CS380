@@ -49,11 +49,8 @@ int ske_keyGen(SKE_KEY *K, unsigned char *entropy, size_t entLen)
 		temp = malloc(64);
 		HMAC(EVP_sha512(), KDF_KEY, 32, entropy, entLen, temp, NULL);
 
-		for (int i = 0; i < 32; i++)
-		{
-			K->hmacKey[i] = temp[i];
-			K->aesKey[i] = temp[i + 32];
-		}
+		memcpy(K->hmacKey, temp, 32);
+		memcpy(K->aesKey, temp + 32, 32);
 
 		free(temp);
 	}
@@ -103,6 +100,7 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 						SKE_KEY *K, unsigned char *IV, size_t offset_out)
 {
 	/* TODO: write this.  Hint: mmap. */
+	struct stat buf;
 
 	int fin = open(fnin, O_RDONLY);
 	if (fin == -1)
@@ -117,7 +115,6 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 		return -1;
 	}
 
-	struct stat buf;
 	if (fstat(fin, &buf) == -1 || !buf.st_size)
 	{
 		return -1;
@@ -157,6 +154,7 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 
 	munmap(pa, buf.st_size);
 	free(ciphertext);
+	free(pa);
 	close(fin);
 	close(fout);
 	return 0;
@@ -169,10 +167,10 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 	 * Otherwise, return the number of bytes written.  See aes-example.c
 	 * for how to do basic decryption. */
 
-	unsigned char *hmac;
-	hmac = malloc(HM_LEN);
 	unsigned char *IV;
 	IV = malloc(16);
+	unsigned char *hmac;
+	hmac = malloc(HM_LEN);
 
 	HMAC(EVP_sha256(), K->hmacKey, HM_LEN, inBuf, len - HM_LEN, hmac, NULL);
 
@@ -187,11 +185,9 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 	memcpy(IV, inBuf, 16);
 
 	int cplen = len - HM_LEN - 16;
-	unsigned char ciphertext[cplen];
-	for (int i = 0; i < cplen; i++)
-	{
-		ciphertext[i] = inBuf[i + 16];
-	}
+	unsigned char *ciphertext;
+	ciphertext = malloc(cplen);
+	memcpy(ciphertext, inBuf + 16, cplen);
 
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_ctr(), 0, K->aesKey, IV))
@@ -204,6 +200,10 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 	{
 		ERR_print_errors_fp(stderr);
 	}
+
+	free(IV);
+	free(hmac);
+	free(ciphertext);
 
 	return nw;
 }
@@ -250,6 +250,8 @@ size_t ske_decrypt_file(const char *fnout, const char *fnin,
 	{
 		fputs(plaintext, pFile);
 		fclose(pFile);
+		free(plaintext);
+		free(pa);
 		return 0;
 	}
 
