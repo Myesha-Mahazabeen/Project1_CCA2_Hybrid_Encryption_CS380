@@ -89,8 +89,6 @@ size_t ske_encrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 		ERR_print_errors_fp(stderr);
 	}
 
-	int outputLen = nw + 16 + HM_LEN;
-
 	unsigned char *HMAC_Buf = malloc(HM_LEN);
 	HMAC(EVP_sha256(), K->hmacKey, HM_LEN, outBuf, nw + 16, HMAC_Buf, NULL);
 	memcpy(&outBuf[nw + 16], HMAC_Buf, HM_LEN);
@@ -98,7 +96,7 @@ size_t ske_encrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 	EVP_CIPHER_CTX_free(ctx);
 	free(HMAC_Buf);
 
-	return outputLen; /* TODO: should return number of bytes written, which
+	return nw + 16 + HM_LEN; /* TODO: should return number of bytes written, which
 								 hopefully matches ske_getOutputLen(...). */
 }
 size_t ske_encrypt_file(const char *fnout, const char *fnin,
@@ -106,27 +104,27 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 {
 	/* TODO: write this.  Hint: mmap. */
 
-	int fdin = open(fnin, O_RDONLY);
-	if (fdin == -1)
+	int fin = open(fnin, O_RDONLY);
+	if (fin == -1)
 	{
 		printf("Failed to open %s\n", fnin);
 		return -1;
 	}
-	int fdout = open(fnout, O_CREAT | O_RDWR, S_IRWXU);
-	if (fdout == -1)
+	int fout = open(fnout, O_CREAT | O_RDWR, S_IRWXU);
+	if (fout == -1)
 	{
 		printf("Failed to open %s\n", fnout);
 		return -1;
 	}
 
 	struct stat buf;
-	if (fstat(fdin, &buf) == -1 || buf.st_size == 0)
+	if (fstat(fin, &buf) == -1 || !buf.st_size)
 	{
 		return -1;
 	}
 
 	char *pa;
-	pa = mmap(NULL, buf.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
+	pa = mmap(NULL, buf.st_size, PROT_READ, MAP_PRIVATE, fin, 0);
 	if (pa == MAP_FAILED)
 	{
 		return -1;
@@ -150,8 +148,8 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 		printf("Failed to encrypt\n");
 	}
 
-	lseek(fdout, offset_out, SEEK_SET);
-	int wrs = write(fdout, ciphertext, encryptLen);
+	lseek(fout, offset_out, SEEK_SET);
+	int wrs = write(fout, ciphertext, encryptLen);
 	if (wrs == -1)
 	{
 		printf("Failed to write to file\n");
@@ -159,8 +157,8 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin,
 
 	munmap(pa, buf.st_size);
 	free(ciphertext);
-	close(fdin);
-	close(fdout);
+	close(fin);
+	close(fout);
 	return 0;
 }
 size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
@@ -171,7 +169,11 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 	 * Otherwise, return the number of bytes written.  See aes-example.c
 	 * for how to do basic decryption. */
 
-	unsigned char hmac[HM_LEN];
+	unsigned char *hmac;
+	hmac = malloc(HM_LEN);
+	unsigned char *IV;
+	IV = malloc(16);
+
 	HMAC(EVP_sha256(), K->hmacKey, HM_LEN, inBuf, len - HM_LEN, hmac, NULL);
 
 	for (int i = 0; i < HM_LEN; i++)
@@ -182,12 +184,11 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 		}
 	}
 
-	unsigned char IV[16];
 	memcpy(IV, inBuf, 16);
 
-	int adjustLen = len - HM_LEN - 16;
-	unsigned char ciphertext[adjustLen];
-	for (int i = 0; i < adjustLen; i++)
+	int cplen = len - HM_LEN - 16;
+	unsigned char ciphertext[cplen];
+	for (int i = 0; i < cplen; i++)
 	{
 		ciphertext[i] = inBuf[i + 16];
 	}
@@ -198,8 +199,8 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len,
 		ERR_print_errors_fp(stderr);
 	}
 
-	int nw = 0;
-	if (1 != EVP_DecryptUpdate(ctx, outBuf, &nw, ciphertext, adjustLen))
+	int nw;
+	if (1 != EVP_DecryptUpdate(ctx, outBuf, &nw, ciphertext, cplen))
 	{
 		ERR_print_errors_fp(stderr);
 	}
@@ -210,36 +211,40 @@ size_t ske_decrypt_file(const char *fnout, const char *fnin,
 						SKE_KEY *K, size_t offset_in)
 {
 	/* TODO: write this. */
-	int fdin = open(fnin, O_RDONLY);
-	if (fdin == -1)
+	struct stat buf;
+
+	int fin = open(fnin, O_RDONLY);
+	if (fin == -1)
 	{
 		printf("Failed to open %s\n", fnin);
 		return -1;
 	}
-	int fdout = open(fnout, O_CREAT | O_RDWR, S_IRWXU);
-	if (fdout == -1)
+	int fout = open(fnout, O_CREAT | O_RDWR, S_IRWXU);
+	if (fout == -1)
 	{
 		printf("Failed to open %s\n", fnout);
 		return -1;
 	}
 
-	struct stat buf;
-	if (fstat(fdin, &buf) == -1 || !buf.st_size)
+	if (fstat(fin, &buf) == -1 || !buf.st_size)
 	{
 		return -1;
 	}
 
 	unsigned char *pa;
-	pa = mmap(NULL, buf.st_size, PROT_READ, MAP_PRIVATE, fdin, offset_in);
+	pa = mmap(NULL, buf.st_size, PROT_READ, MAP_PRIVATE, fin, offset_in);
 	if (pa == MAP_FAILED)
 	{
 		return -1;
 	}
 
-	char *plaintext = malloc(buf.st_size - 16 - HM_LEN - offset_in);
+	int plaintextlen = buf.st_size - 16 - HM_LEN - offset_in;
+	char *plaintext = malloc(plaintextlen);
 	ske_decrypt((unsigned char *)plaintext, pa, buf.st_size - offset_in, K);
 
-	// write(fdout, plaintext, buf.st_size-16-HM_LEN);
+	close(fin);
+	close(fout);
+
 	FILE *pFile = fopen(fnout, "w");
 	if (pFile != NULL)
 	{
