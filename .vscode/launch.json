@@ -6,8 +6,8 @@
       "type": "lldb",
       "request": "launch",
       "args": [],
-      "cwd": "/Users/sharminjahan/Project1_CCA2_Hybrid_Encryption_CS380",
-      "program": "/Users/sharminjahan/Project1_CCA2_Hybrid_Encryption_CS380/build/Debug/outDebug"
+      "cwd": "/Users/sharminjahan/Desktop/Project1_CCA2_Hybrid_Encryption_CS380",
+      "program": "/Users/sharminjahan/Desktop/Project1_CCA2_Hybrid_Encryption_CS380/build/Debug/outDebug"
     }
   ]
 }
